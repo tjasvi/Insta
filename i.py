@@ -11,19 +11,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 # ===== CONFIG =====
 # list of usernames provided by the user
 CREDENTIALS = [
-    "ericawotsa59",
-    "ericawotsa51",
-    "ifonlyisentthis7",
-    "newtejasvi809",
-    "newtejasvi801",
-    "stejasvi8172",
-    "stejasvi8177",
-    "gvvdx262",
-    "gvvdx267",
-    "ifonlyisentthis5",
-    "ifonlyisentthis6",
-    "newtejasvi802026",
-    "winxgx1",
+    "afterword.app2026",
 
 ]
 
@@ -311,3 +299,4 @@ def run_all():
 
 if __name__ == "__main__":
     run_all()
+
