@@ -392,14 +392,18 @@ def find_user_candidates(page):
 
 def amount_candidates(page, flow: SiteFlow):
     amount_re = re.compile(rf"^\s*{re.escape(flow.amount_label)}\s*$")
+    amount_value_selector = f"input[value='{flow.amount_label}']"
+    amount_placeholder_selector = f"input[placeholder='{flow.amount_label}'], textarea[placeholder='{flow.amount_label}']"
+    amount_aria_selector = f"input[aria-label='{flow.amount_label}'], textarea[aria-label='{flow.amount_label}']"
     candidates = []
     for label, ctx in contexts_for(page):
         candidates.extend(
             [
                 (f"{label} textbox named {flow.amount_label}", ctx.get_by_role("textbox", name=amount_re)),
-                (f"{label} textbox displaying {flow.amount_label}", ctx.get_by_display_value(amount_re)),
-                (f"{label} input value {flow.amount_label}", ctx.locator(f"input[value='{flow.amount_label}']")),
-                (f"{label} input placeholder {flow.amount_label}", ctx.locator(f"input[placeholder='{flow.amount_label}']")),
+                (f"{label} input value {flow.amount_label}", ctx.locator(amount_value_selector)),
+                (f"{label} input placeholder {flow.amount_label}", ctx.locator(amount_placeholder_selector)),
+                (f"{label} input aria-label {flow.amount_label}", ctx.locator(amount_aria_selector)),
+                (f"{label} amount-like input", ctx.locator("input[name*='amount' i], input[name*='count' i], input[name*='quantity' i], input[name*='adet' i]")),
                 (f"{label} number input", ctx.locator("input[type='number']")),
             ]
         )
