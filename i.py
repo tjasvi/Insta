@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 # ===== CONFIG =====
 # list of usernames provided by the user
 CREDENTIALS = [
-    "afterword.app2026",
+    "stejasvi8175",
 
 ]
 
@@ -19,7 +19,7 @@ CREDENTIALS = [
 def make_password(username: str) -> str:
     return f"{username}{username}"
 
-TARGET_USERNAME = "tjvsi"
+TARGET_USERNAME = "tjasvs"
 TARGET_AMOUNT = "50000"
 HEADLESS = True  # set True if you don't want the browser UI
 
