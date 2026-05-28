@@ -1,14 +1,11 @@
 # multi_sites_with_multiple_creds.py
-# Python Playwright runner updated from the latest recorded flow in new.txt.
-#
-# For each credential, the script opens a fresh browser context, visits every
-# configured site, logs in, opens the IG followers service, fills the target
-# username/amount, and starts the task.
+# Site-specific Python Playwright runner built from the verified recordings.
 
 import os
 import re
 import time
 import traceback
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -25,52 +22,121 @@ except ModuleNotFoundError as exc:
 # ===== CONFIG =====
 
 DEFAULT_CREDENTIALS = [
-    "stejasvi8175",
+    os.getenv("INSTA_USER_1", "stejasvi8176"),
 ]
-
 CREDENTIALS = [
     item.strip()
     for item in os.getenv("INSTA_CREDENTIALS", ",".join(DEFAULT_CREDENTIALS)).split(",")
     if item.strip()
 ]
-
 TARGET_USERNAME = os.getenv("INSTA_TARGET_USERNAME", "tjasvs")
-TARGET_AMOUNT = os.getenv("INSTA_TARGET_AMOUNT", "5000")
 HEADLESS = os.getenv("INSTA_HEADLESS", "true").strip().lower() not in {"0", "false", "no"}
 
 DEFAULT_TIMEOUT_MS = 15_000
-QUICK_TIMEOUT_MS = 3_500
+QUICK_TIMEOUT_MS = 5_000
+TASK_TIMEOUT_MS = 15_000
 PAGE_LOAD_TIMEOUT_MS = 60_000
 
+LOGIN_ANY_RE = re.compile(r"(login|log.?n|giri.|g.{1,2}r.{1,2})", re.I)
+LOGIN_WITH_INSTAGRAM_RE = re.compile(
+    r"((login|log.?n|giri.).*instagram|instagram.*(login|log.?n|giri.))",
+    re.I,
+)
+GIRIS_TAKIP_RE = re.compile(r"((login|log.?n|giri.).*takip|(login|log.?n|giri.))", re.I)
+USERNAME_RE = re.compile(r"^username$", re.I)
+PASSWORD_RE = re.compile(r"^password$", re.I)
+FIND_USER_RE = re.compile(r"find\s*user", re.I)
+START_RE = re.compile(r"start", re.I)
+
+
+@dataclass(frozen=True)
+class SiteFlow:
+    name: str
+    url: str
+    login_re: re.Pattern
+    follower_count: str
+    amount_label: str
+    amount_value: str
+    tools_url: str | None = None
+
+
 SITES = [
-    "https://takipcikrali.com/",
-    "https://fastfollow.in/",
-    # "https://takipciking.com/",
-    # "https://takipcimx.com/",
-    "https://takipcigir.com/",
-    "https://takip88.com/",
-    "https://takipcitime.net/",
-    "https://takipcimx.net/",
-    # "https://takipcitime.com/",
-    "https://instamoda.org/",
-    # "https://bayitakipci.com/",
-    # "https://takipciking.net/",
-    # "https://hepsitakipci.com/",
-    "https://takipcizen.com/",
-    "https://takipcibase.com/",
+    SiteFlow(
+        name="takipcikrali",
+        url="https://takipcikrali.com/",
+        login_re=LOGIN_ANY_RE,
+        follower_count="0",
+        amount_label="50",
+        amount_value="5000",
+    ),
+    SiteFlow(
+        name="fastfollow",
+        url="https://fastfollow.in/",
+        login_re=LOGIN_WITH_INSTAGRAM_RE,
+        follower_count="280",
+        amount_label="50",
+        amount_value="5000",
+    ),
+    SiteFlow(
+        name="takipcigir",
+        url="https://takipcigir.com/",
+        login_re=LOGIN_WITH_INSTAGRAM_RE,
+        follower_count="175",
+        amount_label="50",
+        amount_value="5000",
+    ),
+    SiteFlow(
+        name="takip88",
+        url="https://takip88.com/",
+        login_re=LOGIN_WITH_INSTAGRAM_RE,
+        follower_count="280",
+        amount_label="50",
+        amount_value="5000",
+    ),
+    # Site 5 disabled from the manual run:
+    # SiteFlow(
+    #     name="takipcitime",
+    #     url="https://takipcitime.net/",
+    #     login_re=LOGIN_WITH_INSTAGRAM_RE,
+    #     follower_count="",
+    #     amount_label="50",
+    #     amount_value="5000",
+    # ),
+    SiteFlow(
+        name="takipcimx",
+        url="https://takipcimx.net/",
+        login_re=GIRIS_TAKIP_RE,
+        follower_count="245",
+        amount_label="60",
+        amount_value="6000",
+    ),
+    SiteFlow(
+        name="instamoda",
+        url="https://instamoda.org/",
+        login_re=LOGIN_WITH_INSTAGRAM_RE,
+        follower_count="420",
+        amount_label="50",
+        amount_value="50000",
+    ),
+    SiteFlow(
+        name="takipcizen",
+        url="https://takipcizen.com/",
+        login_re=LOGIN_WITH_INSTAGRAM_RE,
+        follower_count="245",
+        amount_label="50",
+        amount_value="50000",
+        tools_url="https://takipcizen.com/tools",
+    ),
+    SiteFlow(
+        name="takipcibase",
+        url="https://takipcibase.com/a",
+        login_re=LOGIN_ANY_RE,
+        follower_count="210",
+        amount_label="70",
+        amount_value="70000",
+        tools_url="https://takipcibase.com/tools",
+    ),
 ]
-
-
-# Text patterns are intentionally broad. They cover the latest recording
-# from new.txt and the older Turkish labels without relying on broken encoding.
-LOGIN_TEXT = re.compile(r"(login|log.{1,2}n|giri.|giris)", re.I)
-ACCOUNT_USERNAME_TEXT = re.compile(r"(username|user\s*name|kullan)", re.I)
-PASSWORD_TEXT = re.compile(r"(password|pass|sifre|.ifre)", re.I)
-FOLLOWERS_TEXT = re.compile(r"(420\s*ig\s*followers|ig\s*followers|followers|takip)", re.I)
-TARGET_USERNAME_TEXT = re.compile(r"(fatihh|username|user\s*name|user|profile|instagram)", re.I)
-FIND_USER_TEXT = re.compile(r"(find\s*user|kullan.*bul|user.*find|bul)", re.I)
-AMOUNT_TEXT = re.compile(r"^\s*(50|amount|adet|count|quantity)\s*$", re.I)
-START_TEXT = re.compile(r"(start|baslat|ba.*lat)", re.I)
 
 
 # ===== Helpers =====
@@ -88,10 +154,6 @@ def host_for(url: str) -> str:
     return safe_name(urlparse(url).netloc or url)
 
 
-def pause(page, milliseconds: int = 600) -> None:
-    page.wait_for_timeout(milliseconds)
-
-
 def wait_for_page_settle(page, timeout_ms: int = 8_000) -> None:
     try:
         page.wait_for_load_state("networkidle", timeout=timeout_ms)
@@ -99,18 +161,28 @@ def wait_for_page_settle(page, timeout_ms: int = 8_000) -> None:
         pass
     except Exception:
         pass
-    pause(page, 400)
+    page.wait_for_timeout(500)
 
 
-def save_error_screenshot(page, prefix: str, url: str, cred_idx: int, site_idx: int) -> None:
+def goto(page, url: str) -> None:
+    page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+    wait_for_page_settle(page)
+
+
+def save_error_screenshot(page, prefix: str, flow: SiteFlow, cred_idx: int, site_idx: int) -> None:
     out = Path("errors")
     out.mkdir(parents=True, exist_ok=True)
-    path = out / f"{prefix}_cred{cred_idx}_site{site_idx}_{host_for(url)}.png"
+    path = out / f"{prefix}_cred{cred_idx}_site{site_idx}_{flow.name}_{host_for(flow.url)}.png"
     try:
         page.screenshot(path=str(path), full_page=True)
         print(f"[!] Screenshot saved: {path}")
     except Exception as exc:
         print(f"[!] Failed to save screenshot: {exc}")
+
+
+def compact(value, limit: int = 90) -> str:
+    value = re.sub(r"\s+", " ", value or "").strip()
+    return value[:limit]
 
 
 def contexts_for(page):
@@ -122,7 +194,72 @@ def contexts_for(page):
     return contexts
 
 
-def try_action(label: str, candidates, operation, timeout_ms: int = QUICK_TIMEOUT_MS) -> bool:
+def dump_visible_controls(page, limit: int = 60) -> None:
+    print("[!] Visible controls snapshot:")
+    printed = 0
+
+    for label, ctx in contexts_for(page):
+        try:
+            controls = ctx.locator("input, button, a, textarea, select, [role='button']")
+            count = min(controls.count(), 160)
+        except Exception as exc:
+            print(f"    {label}: could not inspect controls: {exc}")
+            continue
+
+        for index in range(count):
+            if printed >= limit:
+                print("    ...")
+                return
+
+            control = controls.nth(index)
+            try:
+                if not control.is_visible():
+                    continue
+
+                details = control.evaluate(
+                    """el => ({
+                        tag: el.tagName.toLowerCase(),
+                        type: el.getAttribute('type') || '',
+                        role: el.getAttribute('role') || '',
+                        name: el.getAttribute('name') || '',
+                        id: el.id || '',
+                        placeholder: el.getAttribute('placeholder') || '',
+                        aria: el.getAttribute('aria-label') || '',
+                        value: el.getAttribute('value') || el.value || '',
+                        text: el.innerText || el.textContent || ''
+                    })"""
+                )
+                secret_hint = " ".join(
+                    [
+                        details["type"],
+                        details["name"],
+                        details["id"],
+                        details["placeholder"],
+                        details["aria"],
+                    ]
+                ).lower()
+                value = "<hidden>" if any(word in secret_hint for word in ("password", "pass", "sifre")) else compact(details["value"])
+                bits = [
+                    f"tag={details['tag']}",
+                    f"type={compact(details['type'])}",
+                    f"role={compact(details['role'])}",
+                    f"name={compact(details['name'])}",
+                    f"id={compact(details['id'])}",
+                    f"placeholder={compact(details['placeholder'])}",
+                    f"aria={compact(details['aria'])}",
+                    f"value={value}",
+                    f"text={compact(details['text'])}",
+                ]
+                print(f"    {label} #{index}: " + " | ".join(bits))
+                printed += 1
+            except Exception:
+                continue
+
+    if printed == 0:
+        print("    no visible input/button/link controls found")
+
+
+def try_action(label: str, candidates, operation, timeout_ms: int) -> bool:
     last_error = None
 
     for description, locator in candidates:
@@ -143,46 +280,42 @@ def try_action(label: str, candidates, operation, timeout_ms: int = QUICK_TIMEOU
 
 
 def click_candidates(label: str, candidates, timeout_ms: int = QUICK_TIMEOUT_MS) -> bool:
-    return try_action(
-        label,
-        candidates,
-        lambda locator, timeout: locator.click(timeout=timeout),
-        timeout_ms=timeout_ms,
-    )
+    return try_action(label, candidates, lambda locator, timeout: locator.click(timeout=timeout), timeout_ms)
 
 
 def fill_candidates(label: str, candidates, value: str, timeout_ms: int = QUICK_TIMEOUT_MS) -> bool:
-    return try_action(
-        label,
-        candidates,
-        lambda locator, timeout: locator.fill(value, timeout=timeout),
-        timeout_ms=timeout_ms,
-    )
+    return try_action(label, candidates, lambda locator, timeout: locator.fill(value, timeout=timeout), timeout_ms)
 
 
-def login_open_candidates(page):
+def link_or_button_candidates(ctx, name_re: re.Pattern):
     return [
-        ("latest LOGIN link", page.get_by_role("link", name=LOGIN_TEXT)),
-        ("LOGIN button", page.get_by_role("button", name=LOGIN_TEXT)),
-        ("LOGIN text", page.get_by_text(LOGIN_TEXT)),
-        ("anchor containing Login", page.locator("a:has-text('Login')")),
-        ("anchor containing LOGIN", page.locator("a:has-text('LOGIN')")),
-        ("anchor containing Giris", page.locator("a:has-text('Giris')")),
+        ("role link", ctx.get_by_role("link", name=name_re)),
+        ("role button", ctx.get_by_role("button", name=name_re)),
+        ("anchor text", ctx.locator("a").filter(has_text=name_re)),
+        ("button text", ctx.locator("button").filter(has_text=name_re)),
+        ("role=button text", ctx.locator("[role='button']").filter(has_text=name_re)),
+        ("input value", ctx.locator("input[type='submit'], input[type='button']").filter(has_text=name_re)),
     ]
 
 
-def account_username_candidates(page):
+def login_open_candidates(page, flow: SiteFlow):
+    candidates = []
+    for label, ctx in contexts_for(page):
+        for desc, locator in link_or_button_candidates(ctx, flow.login_re):
+            candidates.append((f"{label} {desc}", locator))
+    return candidates
+
+
+def username_candidates(page):
     candidates = []
     for label, ctx in contexts_for(page):
         candidates.extend(
             [
-                (f"{label} textbox named Username", ctx.get_by_role("textbox", name=ACCOUNT_USERNAME_TEXT)),
-                (f"{label} input[name='username']", ctx.locator("input[name='username']")),
-                (f"{label} input[name*='username']", ctx.locator("input[name*='username' i]")),
-                (f"{label} input[name*='user']", ctx.locator("input[name*='user' i]")),
-                (f"{label} placeholder user", ctx.locator("input[placeholder*='user' i]")),
-                (f"{label} placeholder kullan", ctx.locator("input[placeholder*='kullan' i]")),
-                (f"{label} aria-label user", ctx.locator("input[aria-label*='user' i]")),
+                (f"{label} textbox named Username", ctx.get_by_role("textbox", name=USERNAME_RE)),
+                (f"{label} input name username", ctx.locator("input[name='username']")),
+                (f"{label} input name contains username", ctx.locator("input[name*='username' i]")),
+                (f"{label} input placeholder Username", ctx.locator("input[placeholder*='username' i]")),
+                (f"{label} input aria Username", ctx.locator("input[aria-label*='username' i]")),
             ]
         )
     return candidates
@@ -193,230 +326,174 @@ def password_candidates(page):
     for label, ctx in contexts_for(page):
         candidates.extend(
             [
-                (f"{label} textbox named Password", ctx.get_by_role("textbox", name=PASSWORD_TEXT)),
-                (f"{label} input[type='password']", ctx.locator("input[type='password']")),
-                (f"{label} input[name*='password']", ctx.locator("input[name*='password' i]")),
-                (f"{label} input[name*='pass']", ctx.locator("input[name*='pass' i]")),
-                (f"{label} placeholder password", ctx.locator("input[placeholder*='password' i]")),
-                (f"{label} placeholder sifre", ctx.locator("input[placeholder*='sifre' i]")),
+                (f"{label} textbox named Password", ctx.get_by_role("textbox", name=PASSWORD_RE)),
+                (f"{label} input type password", ctx.locator("input[type='password']")),
+                (f"{label} input name password", ctx.locator("input[name*='password' i]")),
+                (f"{label} input placeholder Password", ctx.locator("input[placeholder*='password' i]")),
+                (f"{label} input aria Password", ctx.locator("input[aria-label*='password' i]")),
             ]
         )
     return candidates
 
 
 def login_submit_candidates(page):
+    login_button_re = re.compile(r"^login$", re.I)
     candidates = []
     for label, ctx in contexts_for(page):
         candidates.extend(
             [
-                (f"{label} Login button", ctx.get_by_role("button", name=LOGIN_TEXT)),
-                (f"{label} submit button", ctx.locator("button[type='submit']")),
-                (f"{label} input submit", ctx.locator("input[type='submit']")),
-                (f"{label} button text Login", ctx.locator("button:has-text('Login')")),
-                (f"{label} button text LOGIN", ctx.locator("button:has-text('LOGIN')")),
-                (f"{label} button text Giris", ctx.locator("button:has-text('Giris')")),
+                (f"{label} Login button", ctx.get_by_role("button", name=login_button_re)),
+                (f"{label} button text Login", ctx.locator("button").filter(has_text=login_button_re)),
+                (f"{label} submit input", ctx.locator("input[type='submit'][value*='Login' i]")),
+                (f"{label} generic submit", ctx.locator("button[type='submit'], input[type='submit']")),
             ]
         )
     return candidates
 
 
-def followers_candidates(page):
-    return [
-        ("latest 420 IG Followers link", page.get_by_role("link", name=re.compile(r"420\s*ig\s*followers", re.I))),
-        ("IG Followers link", page.get_by_role("link", name=FOLLOWERS_TEXT)),
-        ("Followers button", page.get_by_role("button", name=FOLLOWERS_TEXT)),
-        ("anchor text 420 IG Followers", page.locator("a:has-text('420 IG Followers')")),
-        ("anchor text IG Followers", page.locator("a:has-text('IG Followers')")),
-        ("anchor text Followers", page.locator("a:has-text('Followers')")),
-        ("any anchor containing takip", page.locator("a:has-text('takip')")),
+def follower_candidates(page, flow: SiteFlow):
+    exact_re = re.compile(rf"\b{re.escape(flow.follower_count)}\s*IG\s*Followers\b", re.I)
+    any_re = re.compile(r"\bIG\s*Followers\b", re.I)
+    candidates = [
+        ("exact follower link", page.get_by_role("link", name=exact_re)),
+        ("exact follower anchor", page.locator("a").filter(has_text=exact_re)),
+        ("any IG Followers link", page.get_by_role("link", name=any_re)),
+        ("any IG Followers anchor", page.locator("a").filter(has_text=any_re)),
     ]
+    return candidates
 
 
 def target_username_candidates(page):
-    return [
-        ("latest target textbox named fatihh", page.get_by_role("textbox", name=re.compile(r"fatihh", re.I))),
-        ("target username textbox", page.get_by_role("textbox", name=TARGET_USERNAME_TEXT)),
-        ("input placeholder fatihh", page.locator("input[placeholder*='fatihh' i]")),
-        ("input name username", page.locator("input[name='username']")),
-        ("input name contains username", page.locator("input[name*='username' i]")),
-        ("input name contains user", page.locator("input[name*='user' i]")),
-        ("input placeholder user", page.locator("input[placeholder*='user' i]")),
-        ("first text input", page.locator("input[type='text']")),
-    ]
+    name_re = re.compile(r"^fatihh$", re.I)
+    candidates = []
+    for label, ctx in contexts_for(page):
+        candidates.extend(
+            [
+                (f"{label} textbox named fatihh", ctx.get_by_role("textbox", name=name_re)),
+                (f"{label} placeholder fatihh", ctx.locator("input[placeholder*='fatihh' i]")),
+                (f"{label} aria fatihh", ctx.locator("input[aria-label*='fatihh' i]")),
+            ]
+        )
+    return candidates
 
 
 def find_user_candidates(page):
-    return [
-        ("latest Find User button", page.get_by_role("button", name=re.compile(r"find\s*user", re.I))),
-        ("Find User text button", page.locator("button:has-text('Find User')")),
-        ("button matching find/user", page.get_by_role("button", name=FIND_USER_TEXT)),
-        ("submit input", page.locator("input[type='submit']")),
-        ("generic find button", page.locator("button").filter(has_text=FIND_USER_TEXT)),
-    ]
+    candidates = []
+    for label, ctx in contexts_for(page):
+        candidates.extend(
+            [
+                (f"{label} Find User button", ctx.get_by_role("button", name=FIND_USER_RE)),
+                (f"{label} button text Find User", ctx.locator("button").filter(has_text=FIND_USER_RE)),
+                (f"{label} input value Find User", ctx.locator("input[type='submit'][value*='Find' i], input[type='button'][value*='Find' i]")),
+            ]
+        )
+    return candidates
 
 
-def amount_candidates(page):
-    return [
-        ("latest textbox named 50", page.get_by_role("textbox", name=re.compile(r"^\s*50\s*$"))),
-        ("amount textbox", page.get_by_role("textbox", name=AMOUNT_TEXT)),
-        ("input placeholder 50", page.locator("input[placeholder='50']")),
-        ("input value 50", page.locator("input[value='50']")),
-        ("input name amount", page.locator("input[name*='amount' i]")),
-        ("input name count", page.locator("input[name*='count' i]")),
-        ("number input", page.locator("input[type='number']")),
-    ]
+def amount_candidates(page, flow: SiteFlow):
+    amount_re = re.compile(rf"^\s*{re.escape(flow.amount_label)}\s*$")
+    candidates = []
+    for label, ctx in contexts_for(page):
+        candidates.extend(
+            [
+                (f"{label} textbox named {flow.amount_label}", ctx.get_by_role("textbox", name=amount_re)),
+                (f"{label} textbox displaying {flow.amount_label}", ctx.get_by_display_value(amount_re)),
+                (f"{label} input value {flow.amount_label}", ctx.locator(f"input[value='{flow.amount_label}']")),
+                (f"{label} input placeholder {flow.amount_label}", ctx.locator(f"input[placeholder='{flow.amount_label}']")),
+                (f"{label} number input", ctx.locator("input[type='number']")),
+            ]
+        )
+    return candidates
 
 
 def start_candidates(page):
-    return [
-        ("latest Start button", page.get_by_role("button", name=re.compile(r"start", re.I))),
-        ("button matching start", page.get_by_role("button", name=START_TEXT)),
-        ("button text Start", page.locator("button:has-text('Start')")),
-        ("button text Baslat", page.locator("button:has-text('Baslat')")),
-        ("submit input", page.locator("input[type='submit']")),
-    ]
+    candidates = []
+    for label, ctx in contexts_for(page):
+        candidates.extend(
+            [
+                (f"{label} Start button", ctx.get_by_role("button", name=START_RE)),
+                (f"{label} button text Start", ctx.locator("button").filter(has_text=START_RE)),
+                (f"{label} input value Start", ctx.locator("input[type='submit'][value*='Start' i], input[type='button'][value*='Start' i]")),
+            ]
+        )
+    return candidates
 
 
-def fill_fallback_textbox(page, label: str, value: str, preferred_indexes) -> bool:
-    textboxes = page.get_by_role("textbox")
-    try:
-        count = textboxes.count()
-    except Exception as exc:
-        print(f"[!] Could not inspect textboxes for {label}: {exc}")
-        return False
+def attempt_login(page, flow: SiteFlow, username: str) -> bool:
+    password = make_password(username)
 
-    for index in preferred_indexes:
-        if index < 0:
-            index = count + index
-        if index < 0 or index >= count:
-            continue
-        try:
-            box = textboxes.nth(index)
-            box.wait_for(state="visible", timeout=QUICK_TIMEOUT_MS)
-            box.fill(value, timeout=QUICK_TIMEOUT_MS)
-            print(f"[+] {label}: fallback textbox #{index}")
-            return True
-        except Exception:
-            continue
-
-    print(f"[!] Could not {label} with any fallback textbox.")
-    return False
-
-
-def attempt_login(page, username: str, password: str) -> bool:
     print("[*] Opening login form")
-    click_candidates("open login form", login_open_candidates(page), timeout_ms=QUICK_TIMEOUT_MS)
-    pause(page, 900)
-
-    username_filled = fill_candidates(
-        "fill account username",
-        account_username_candidates(page),
-        username,
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    password_filled = fill_candidates(
-        "fill account password",
-        password_candidates(page),
-        password,
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-
-    if not username_filled or not password_filled:
+    if not click_candidates("open login form", login_open_candidates(page, flow), timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
         return False
 
-    submitted = click_candidates(
-        "submit login",
-        login_submit_candidates(page),
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if not submitted:
+    page.wait_for_timeout(900)
+
+    if not fill_candidates("fill account username", username_candidates(page), username, timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
         return False
 
-    wait_for_page_settle(page, timeout_ms=10_000)
+    if not fill_candidates("fill account password", password_candidates(page), password, timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
+        return False
+
+    if not click_candidates("submit login", login_submit_candidates(page), timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
+        return False
+
+    wait_for_page_settle(page, timeout_ms=12_000)
     return True
 
 
-def perform_task_after_login(page) -> bool:
-    print("[*] Opening followers service")
-    opened_followers = click_candidates(
-        "open followers service",
-        followers_candidates(page),
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if opened_followers:
-        wait_for_page_settle(page, timeout_ms=8_000)
-    else:
-        print("[!] Followers service link was not found. Trying the form on the current page.")
+def perform_task_after_login(page, flow: SiteFlow) -> bool:
+    if flow.tools_url:
+        print(f"[*] Opening tools page: {flow.tools_url}")
+        goto(page, flow.tools_url)
 
-    username_filled = fill_candidates(
-        "fill target username",
-        target_username_candidates(page),
-        TARGET_USERNAME,
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if not username_filled:
-        username_filled = fill_fallback_textbox(
-            page,
-            "fill target username",
-            TARGET_USERNAME,
-            preferred_indexes=[0, 1, -1],
-        )
-
-    if not username_filled:
+    print(f"[*] Opening {flow.follower_count} IG Followers service")
+    if not click_candidates("open followers service", follower_candidates(page, flow), timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
         return False
 
-    find_clicked = click_candidates(
-        "click Find User",
-        find_user_candidates(page),
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if find_clicked:
-        wait_for_page_settle(page, timeout_ms=8_000)
-    else:
-        print("[!] Find User button was not found. Continuing in case the amount field is already available.")
+    wait_for_page_settle(page, timeout_ms=10_000)
 
-    amount_filled = fill_candidates(
-        "fill amount",
-        amount_candidates(page),
-        TARGET_AMOUNT,
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if not amount_filled:
-        amount_filled = fill_fallback_textbox(
-            page,
-            "fill amount",
-            TARGET_AMOUNT,
-            preferred_indexes=[1, -1, 0],
-        )
-
-    if not amount_filled:
+    if not fill_candidates("fill target username", target_username_candidates(page), TARGET_USERNAME, timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
         return False
 
-    started = click_candidates(
-        "click Start",
-        start_candidates(page),
-        timeout_ms=QUICK_TIMEOUT_MS,
-    )
-    if started:
-        wait_for_page_settle(page, timeout_ms=8_000)
+    if not click_candidates("click Find User", find_user_candidates(page), timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
+        return False
 
-    return started
+    wait_for_page_settle(page, timeout_ms=12_000)
+
+    if not fill_candidates("fill amount", amount_candidates(page, flow), flow.amount_value, timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
+        return False
+
+    if not click_candidates("click Start", start_candidates(page), timeout_ms=TASK_TIMEOUT_MS):
+        dump_visible_controls(page)
+        return False
+
+    wait_for_page_settle(page, timeout_ms=8_000)
+    return True
 
 
 # ===== Main runner =====
 
 def run_all() -> None:
     if not CREDENTIALS:
-        raise RuntimeError("No credentials configured.")
+        raise RuntimeError("No credentials configured. Set INSTA_CREDENTIALS or INSTA_USER_1/INSTA_USER_2.")
+
+    print(f"[*] Enabled sites: {len(SITES)}")
+    print(f"[*] Credentials queued: {len(CREDENTIALS)}")
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=HEADLESS)
 
         try:
             for cred_idx, username in enumerate(CREDENTIALS, start=1):
-                password = make_password(username)
                 print(f"\n=== CREDENTIAL [{cred_idx}/{len(CREDENTIALS)}] username={username} password=<hidden> ===")
-
                 context = browser.new_context(
                     viewport={"width": 1366, "height": 768},
                     locale="en-US",
@@ -424,31 +501,32 @@ def run_all() -> None:
                 context.set_default_timeout(DEFAULT_TIMEOUT_MS)
 
                 try:
-                    for site_idx, url in enumerate(SITES, start=1):
-                        print(f"\n--- [{site_idx}/{len(SITES)}] {url} ({username}) ---")
+                    for site_idx, flow in enumerate(SITES, start=1):
+                        print(f"\n--- [{site_idx}/{len(SITES)}] {flow.url} ({username}) ---")
+
                         page = context.new_page()
                         page.set_default_timeout(DEFAULT_TIMEOUT_MS)
+                        page.on("dialog", lambda dialog: dialog.accept())
 
                         try:
-                            page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
-                            wait_for_page_settle(page)
+                            goto(page, flow.url)
 
-                            if not attempt_login(page, username, password):
-                                print(f"[!] Login failed on {url} using {username}")
-                                save_error_screenshot(page, "login_failed", url, cred_idx, site_idx)
+                            if not attempt_login(page, flow, username):
+                                print(f"[!] Login failed on {flow.url} using {username}")
+                                save_error_screenshot(page, "login_failed", flow, cred_idx, site_idx)
                                 continue
 
-                            if not perform_task_after_login(page):
-                                print(f"[!] Task flow failed on {url} using {username}")
-                                save_error_screenshot(page, "task_failed", url, cred_idx, site_idx)
+                            if not perform_task_after_login(page, flow):
+                                print(f"[!] Task flow failed on {flow.url} using {username}")
+                                save_error_screenshot(page, "task_failed", flow, cred_idx, site_idx)
                                 continue
 
-                            print(f"[+] Done: {url} (credential: {username})")
+                            print(f"[+] Done: {flow.url} (credential: {username})")
 
                         except Exception as exc:
-                            print(f"[!] Exception for {url} with {username}: {exc}")
+                            print(f"[!] Exception for {flow.url} with {username}: {exc}")
                             traceback.print_exc()
-                            save_error_screenshot(page, "error", url, cred_idx, site_idx)
+                            save_error_screenshot(page, "error", flow, cred_idx, site_idx)
                         finally:
                             try:
                                 page.close()
@@ -456,12 +534,13 @@ def run_all() -> None:
                                 pass
 
                         time.sleep(1.0)
-
                 finally:
                     try:
                         context.close()
                     except Exception:
                         pass
+
+                time.sleep(1.5)
 
         finally:
             browser.close()
