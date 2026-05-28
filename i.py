@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
+    from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
 except ModuleNotFoundError as exc:
@@ -22,7 +23,7 @@ except ModuleNotFoundError as exc:
 # ===== CONFIG =====
 
 DEFAULT_CREDENTIALS = [
-    os.getenv("INSTA_USER_1", "stejasvi8176"),
+    os.getenv("INSTA_USER_2", "stejasvi8176"),
 ]
 CREDENTIALS = [
     item.strip()
@@ -165,8 +166,30 @@ def wait_for_page_settle(page, timeout_ms: int = 8_000) -> None:
 
 
 def goto(page, url: str) -> None:
-    page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=PAGE_LOAD_TIMEOUT_MS)
+    except PlaywrightError as exc:
+        if "net::ERR_ABORTED" not in str(exc):
+            raise
+        print(f"[!] Navigation aborted for {url}; continuing with the current page.")
+        page.wait_for_timeout(1_500)
     wait_for_page_settle(page)
+
+
+def is_instagram_appeal_page(page) -> bool:
+    checks = [
+        page.get_by_role("button", name=re.compile(r"start\s*appeal", re.I)),
+        page.get_by_role("link", name=re.compile(r"log\s*in\s*with\s*another\s*account", re.I)),
+        page.get_by_text(re.compile(r"start\s*appeal|log\s*in\s*with\s*another\s*account|can't\s*log\s*in", re.I)),
+    ]
+
+    for locator in checks:
+        try:
+            locator.first.wait_for(state="visible", timeout=1_000)
+            return True
+        except Exception:
+            pass
+    return False
 
 
 def save_error_screenshot(page, prefix: str, flow: SiteFlow, cred_idx: int, site_idx: int) -> None:
@@ -446,6 +469,10 @@ def attempt_login(page, flow: SiteFlow, username: str) -> bool:
         return False
 
     wait_for_page_settle(page, timeout_ms=12_000)
+    if is_instagram_appeal_page(page):
+        print("[!] Instagram returned an appeal/checkpoint page for this credential on this site.")
+        return False
+
     return True
 
 
@@ -453,6 +480,10 @@ def perform_task_after_login(page, flow: SiteFlow) -> bool:
     if flow.tools_url:
         print(f"[*] Opening tools page: {flow.tools_url}")
         goto(page, flow.tools_url)
+
+    if is_instagram_appeal_page(page):
+        print("[!] Still on Instagram appeal/checkpoint page; skipping this site.")
+        return False
 
     print(f"[*] Opening {flow.follower_count} IG Followers service")
     if not click_candidates("open followers service", follower_candidates(page, flow), timeout_ms=TASK_TIMEOUT_MS):
