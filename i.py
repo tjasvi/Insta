@@ -24,8 +24,8 @@ except ModuleNotFoundError as exc:
 
 DEFAULT_CREDENTIALS = [
     os.getenv("INSTA_USER_1", "ericawotsa53"),
-    os.getenv("INSTA_USER_2", ""),
-    os.getenv("INSTA_USER_3",""),
+    os.getenv("INSTA_USER_2", "wotsaerica7"),
+    os.getenv("INSTA_USER_3","wotsaerica1"),
 ]
 CREDENTIALS = [
     item.strip()
