@@ -147,7 +147,7 @@ SITES = [
 # ===== Helpers =====
 
 def make_password(username: str) -> str:
-    return f"{username}{username}"
+    return f"{username}{username}{username}"
 
 
 def safe_name(value: str) -> str:
