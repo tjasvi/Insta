@@ -23,11 +23,10 @@ except ModuleNotFoundError as exc:
 # ===== CONFIG =====
 
 DEFAULT_CREDENTIALS = [
-    os.getenv("INSTA_USER_1", "wotsaerica1"),
-    os.getenv("INSTA_USER_2", "wotsaerica8"),
-    os.getenv("INSTA_USER_3","wotsaerica5"),
-    os.getenv("INSTA_USER_4","wotsaerica4"),
-    os.getenv("INSTA_USER_5","wotsaerica3"),
+    os.getenv("INSTA_USER_1", "stejasvi8184"),
+    os.getenv("INSTA_USER_2", "stejasvi81520"),
+    os.getenv("INSTA_USER_3","stejasvi819"),
+    os.getenv("INSTA_USER_4","stejasvi816"),
 ]
 CREDENTIALS = [
     item.strip()
